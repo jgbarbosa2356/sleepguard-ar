@@ -1,9 +1,195 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SleepGuard AR</title><link rel="stylesheet" href="css/style.css"><script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script><script src="https://cdn.jsdelivr.net/npm/ar.js@3.4.5/aframe/build/aframe-ar.min.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script><script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script><script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22"></script><script src="firebase-config.js" onerror="console.info('Firebase ainda não configurado')"></script></head><body>
-<header><div><span class="eyebrow">REALIDADE AUMENTADA • CRUD</span><h1>SleepGuard <i>AR</i></h1></div><div id="globalAlert" class="alert-banner">Monitoramento seguro</div></header>
-<main><section class="monitor-grid"><article class="panel camera-panel"><div class="panel-title"><h2>Visão da câmera</h2><span id="cameraBadge" class="badge off">Câmera desligada</span></div><div class="camera-wrap"><video id="webcam" autoplay playsinline muted></video><canvas id="overlay"></canvas><div id="noCamera" class="camera-placeholder">Clique em “Iniciar monitoramento” para liberar a câmera.</div></div><div class="actions"><button id="startBtn" class="primary">▶ Iniciar monitoramento</button><button id="stopBtn" class="secondary" disabled>■ Parar monitoramento</button></div></article>
-<article class="panel controls"><h2>Central de atenção</h2><div class="status-list"><p><span id="cameraDot" class="dot"></span>Câmera: <b id="cameraStatus">aguardando</b></p><p><span id="faceDot" class="dot"></span>Rosto: <b id="faceStatus">não detectado</b></p><p><span id="alertDot" class="dot"></span>Alerta: <b id="alertStatus">inativo</b></p><p><span id="phoneDot" class="dot"></span>Celular: <b id="phoneStatus">não pareado</b></p></div><label>Tempo máximo de olhos fechados <output id="thresholdOut">3 s</output><input id="threshold" type="range" min="1" max="10" value="3" step=".5"></label><div class="metric"><span>Olhos fechados</span><strong id="closedTimer">0.0 s</strong></div><button id="connectBtn" class="outline">▣ Conectar celular</button><div id="qrArea" class="qr-area hidden"><div id="qrcode"></div><p>Escaneie com o celular</p><small id="sessionCode"></small></div><p id="firebaseHint" class="muted">Configure o Firebase para habilitar pareamento em tempo real.</p></article></section>
-<section class="panel history"><div class="section-heading"><div><span class="eyebrow">LOCALSTORAGE • CRUD</span><h2>Histórico de ocorrências</h2></div><button id="newMockBtn" class="secondary">+ Ocorrência de teste</button></div><div class="table-scroll"><table><thead><tr><th>Horário</th><th>Duração</th><th>Alerta</th><th>Status</th><th>Ações</th></tr></thead><tbody id="occurrences"></tbody></table></div></section>
-<section class="immersive"><article class="panel"><div class="section-heading"><div><span class="eyebrow">REALIDADE VIRTUAL</span><h2>Ocorrências em 3D</h2></div><span class="muted">Clique nos cartões para revisar</span></div><a-scene embedded renderer="colorManagement:true" id="vrScene"><a-entity position="0 1.6 3"><a-camera><a-cursor color="#8b5cf6"></a-cursor></a-camera></a-entity><a-entity id="vrCards"></a-entity><a-sky color="#090b14"></a-sky><a-plane rotation="-90 0 0" width="18" height="18" color="#151827"></a-plane></a-scene></article>
-<article class="panel ar-panel"><div class="section-heading"><div><span class="eyebrow">REALIDADE AUMENTADA</span><h2>Modo RA com Hiro</h2></div><button id="arBtn" class="outline">Abrir RA</button></div><p class="muted">Aponte para um marcador Hiro impresso ou exibido em outra tela.</p><div id="arStage" class="hidden"><a-scene embedded arjs="sourceType: webcam; debugUIEnabled:false" vr-mode-ui="enabled:false"><a-marker preset="hiro"><a-entity id="arCards"></a-entity></a-marker><a-entity camera></a-entity></a-scene></div></article></section></main>
-<dialog id="editDialog"><form method="dialog"><h2>Editar ocorrência</h2><label>Duração (segundos)<input id="editDuration" type="number" min=".1" step=".1"></label><label>Mensagem<input id="editMessage" type="text"></label><menu><button value="cancel" class="secondary">Cancelar</button><button id="saveEdit" value="default" class="primary">Salvar</button></menu></form></dialog><audio id="computerAudio"></audio>
-<script src="js/crud.js"></script><script src="js/realtime.js"></script><script src="js/face-detector.js"></script><script src="js/app.js"></script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SleepGuard AR</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.4.5/aframe/build/aframe-ar.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script type="module">
+      // Biblioteca MediaPipe incluída no próprio projeto: funciona mesmo se a rede bloquear CDNs.
+      import {
+        FaceLandmarker,
+        FilesetResolver,
+      } from "./vendor/mediapipe/vision_bundle.mjs";
+      window.FaceLandmarker = FaceLandmarker;
+      window.FilesetResolver = FilesetResolver;
+    </script>
+    <script
+      src="firebase-config.js"
+      onerror="console.info('Firebase ainda não configurado')"
+    ></script>
+  </head>
+  <body>
+    <header>
+      <div>
+        <span class="eyebrow">REALIDADE AUMENTADA • CRUD</span>
+        <h1>SleepGuard <i>AR</i></h1>
+      </div>
+      <div id="globalAlert" class="alert-banner">Monitoramento seguro</div>
+    </header>
+    <main>
+      <section class="monitor-grid">
+        <article class="panel camera-panel">
+          <div class="panel-title">
+            <h2>Visão da câmera</h2>
+            <span id="cameraBadge" class="badge off">Câmera desligada</span>
+          </div>
+          <div class="camera-wrap">
+            <video id="webcam" autoplay playsinline muted></video
+            ><canvas id="overlay"></canvas>
+            <div id="noCamera" class="camera-placeholder">
+              Clique em “Iniciar monitoramento” para liberar a câmera.
+            </div>
+          </div>
+          <div class="actions">
+            <button id="startBtn" class="primary">
+              ▶ Iniciar monitoramento</button
+            ><button id="stopBtn" class="secondary" disabled>
+              ■ Parar monitoramento
+            </button>
+          </div>
+        </article>
+        <article class="panel controls">
+          <h2>Central de atenção</h2>
+          <div class="status-list">
+            <p>
+              <span id="cameraDot" class="dot"></span>Câmera:
+              <b id="cameraStatus">aguardando</b>
+            </p>
+            <p>
+              <span id="faceDot" class="dot"></span>Rosto:
+              <b id="faceStatus">não detectado</b>
+            </p>
+            <p>
+              <span id="alertDot" class="dot"></span>Alerta:
+              <b id="alertStatus">inativo</b>
+            </p>
+            <p>
+              <span id="phoneDot" class="dot"></span>Celular:
+              <b id="phoneStatus">não pareado</b>
+            </p>
+          </div>
+          <label
+            >Tempo máximo de olhos fechados
+            <output id="thresholdOut">3 s</output
+            ><input
+              id="threshold"
+              type="range"
+              min="1"
+              max="10"
+              value="3"
+              step=".5"
+          /></label>
+          <div class="metric">
+            <span>Olhos fechados</span><strong id="closedTimer">0.0 s</strong>
+          </div>
+          <button id="connectBtn" class="outline">▣ Conectar celular</button>
+          <div id="qrArea" class="qr-area hidden">
+            <div id="qrcode"></div>
+            <p>Escaneie com o celular</p>
+            <small id="sessionCode"></small>
+          </div>
+          <p id="firebaseHint" class="muted">
+            Configure o Firebase para habilitar pareamento em tempo real.
+          </p>
+        </article>
+      </section>
+      <section class="panel history">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">LOCALSTORAGE • CRUD</span>
+            <h2>Histórico de ocorrências</h2>
+          </div>
+          <button id="newMockBtn" class="secondary">
+            + Ocorrência de teste
+          </button>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Horário</th>
+                <th>Duração</th>
+                <th>Alerta</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="occurrences"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="immersive">
+        <article class="panel">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">REALIDADE VIRTUAL</span>
+              <h2>Ocorrências em 3D</h2>
+            </div>
+            <span class="muted">Clique nos cartões para revisar</span>
+          </div>
+          <a-scene embedded renderer="colorManagement:true" id="vrScene"
+            ><a-entity position="0 1.6 3"
+              ><a-camera
+                ><a-cursor color="#8b5cf6"></a-cursor></a-camera></a-entity
+            ><a-entity id="vrCards"></a-entity><a-sky color="#090b14"></a-sky
+            ><a-plane
+              rotation="-90 0 0"
+              width="18"
+              height="18"
+              color="#151827"
+            ></a-plane
+          ></a-scene>
+        </article>
+        <article class="panel ar-panel">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">REALIDADE AUMENTADA</span>
+              <h2>Modo RA com Hiro</h2>
+            </div>
+            <button id="arBtn" class="outline">Abrir RA</button>
+          </div>
+          <p class="muted">
+            Aponte para um marcador Hiro impresso ou exibido em outra tela.
+          </p>
+          <div id="arStage" class="hidden">
+            <a-scene
+              embedded
+              arjs="sourceType: webcam; debugUIEnabled:false"
+              vr-mode-ui="enabled:false"
+              ><a-marker preset="hiro"
+                ><a-entity id="arCards"></a-entity></a-marker
+              ><a-entity camera></a-entity
+            ></a-scene>
+          </div>
+        </article>
+      </section>
+    </main>
+    <dialog id="editDialog">
+      <form method="dialog">
+        <h2>Editar ocorrência</h2>
+        <label
+          >Duração (segundos)<input
+            id="editDuration"
+            type="number"
+            min=".1"
+            step=".1" /></label
+        ><label>Mensagem<input id="editMessage" type="text" /></label>
+        <menu>
+          <button value="cancel" class="secondary">Cancelar</button
+          ><button id="saveEdit" value="default" class="primary">Salvar</button>
+        </menu>
+      </form>
+    </dialog>
+    <audio id="computerAudio"></audio>
+    <script src="js/crud.js"></script>
+    <script src="js/realtime.js"></script>
+    <script src="js/face-detector.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>

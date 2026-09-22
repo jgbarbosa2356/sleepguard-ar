@@ -4,9 +4,16 @@ const FaceDetector = (() => {
   const p = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
   const ratio = (lm, top, bottom, left, right) => p(lm[top],lm[bottom]) / Math.max(p(lm[left],lm[right]), .0001);
   async function load(video, callback) {
+    // O script de módulo pode ainda estar carregando quando o usuário clica no botão.
+    // Neste caso, carregamos a cópia local do MediaPipe e só então iniciamos a detecção.
+    if (!window.FaceLandmarker || !window.FilesetResolver) {
+      const loaded = await import('../vendor/mediapipe/vision_bundle.mjs');
+      window.FaceLandmarker = loaded.FaceLandmarker;
+      window.FilesetResolver = loaded.FilesetResolver;
+    }
     const { FaceLandmarker, FilesetResolver } = window;
-    const files = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm');
-    landmarker = await FaceLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task', delegate: 'GPU' }, runningMode:'VIDEO', numFaces:1 });
+    const files = await FilesetResolver.forVisionTasks('vendor/mediapipe/wasm');
+    landmarker = await FaceLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: 'vendor/mediapipe/face_landmarker.task', delegate: 'GPU' }, runningMode:'VIDEO', numFaces:1 });
     onFrame = callback; running = true; requestAnimationFrame(() => loop(video));
   }
   function loop(video) {
